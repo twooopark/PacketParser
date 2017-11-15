@@ -16,7 +16,6 @@ process.on('uncaughtException', function (err) {
     console.log('Caught exception: ' + err);
  
 });//[출처] node.js error가 발생해도 서버가 죽지않게하기.|작성자 큰돌
-
 //Packet Send Data
 server.on('message', function (message, remote) {
 
