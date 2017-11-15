@@ -2,10 +2,11 @@ var PORT 		= 22301,
 	HOST 		= '0.0.0.0';
 var dgram 		= require('dgram'), //UDP: Universal Datagram Protocol
 	mysql 		= require('mysql'),
-    con        	= require("./db"),
+    //con        	= require("./db"),
 	dateutil 	= require('date-utils'); //UNIX TIME PARSER
 
-var server = dgram.createSocket('udp4');//socket 생성, udp6은 UDP over IPv6을 의미udp4 는 UDP over IPv4
+
+var server = dgram.createSocket('udp4');
 
 server.on('listening', function () {
 	var address = server.address();
@@ -15,40 +16,41 @@ server.on('listening', function () {
 process.on('uncaughtException', function (err) {
     console.log('Caught exception: ' + err);
  
-});//[출처] node.js error가 발생해도 서버가 죽지않게하기.|작성자 큰돌
-//Packet Send Data
+});
+
 server.on('message', function (message, remote) {
 
-//console.log("--------------------------------------------------");
 var Command = message.readUIntBE(0, 1);
-var P_Mac = message.readUIntLE(1, 6);//모듈 맥
-var t = message.readUInt32LE(7);//, 4);//시간 (date-utils 설치 해야함)
+var P_Mac = message.readUIntLE(1, 6);
+var t = message.readUInt32LE(7);
 var dt;
-if(t == 0 || t == 32400){ //time == 0 , 09:00
-	dt = new Date();//Date.now().toString().substring(0,10); //현재 시간
+if(t == 0 || t == 32400){ 
+	dt = new Date();
 }else{
 	dt = new Date(t*1000);
 }
 var P_Time = dt.toFormat('YYYY-MM-DD HH24:MI:SS');
-//console.log("Time : "+P_Time);
-var P_Size = message.readUInt32LE(11);//, 4);//총 길이
+var P_Size = message.readUInt32LE(11);
 
-var All_Length = 0; //이전 Packet길이 값을 사용하기 위해
+var All_Length = 0; 
 	if(Command == 0x11){//SensorData
-		//console.log('Sensor');
 		var SN_Count = message.readUInt16LE(15);//, 2);
 		for(var i = 0; i < SN_Count; i++){
 			//SensorData
 			var SN_Type = message.readUInt16LE(17 + All_Length);//, 2);
+			if(SN_Type == 5 || SN_Type == 6) break;
 			var SN_Data = message.readInt32LE(19 + All_Length);//, 4);
 			All_Length += 6;
 
 			var sql = ""+
-			// RAW DATA !!
 			"INSERT INTO `smartschool`.`sensor_data` (`MAC`,`TYPE`,`DATA`,`TIME`) "+
-			"VALUES ("+P_Mac+","+SN_Type+","+SN_Data+",'"+P_Time+"'); "+
+			"SELECT "+P_Mac+","+SN_Type+","+SN_Data+",'"+P_Time+"' FROM DUAL "+
+			"WHERE EXISTS( "+
+				"SELECT `sensor`.`TYPE`, `sensor`.`MIN`, `sensor`.`MAX` "+
+				"FROM `smartschool`.`sensor` "+
+				"WHERE `sensor`.`TYPE` = "+SN_Type+" and (MIN < "+SN_Data+" and MAX > "+SN_Data+")) "+
+			"ON DUPLICATE KEY UPDATE `DATA` ="+SN_Data+",`TIME` ='"+P_Time+"'; "+
 
-			// Refined DATA
 			"INSERT INTO `smartschool`.`sensor_data_update` (`MAC`,`TYPE`,`DATA`,`TIME`) "+
 			"SELECT "+P_Mac+","+SN_Type+","+SN_Data+",'"+P_Time+"' FROM DUAL "+
 			"WHERE EXISTS( "+
@@ -68,16 +70,12 @@ var All_Length = 0; //이전 Packet길이 값을 사용하기 위해
 
 			con.query(sql, function (err, result) {
 				if (err) throw err;
-				//console.log("Sensor 1 record inserted");
 			});
 		}
-		//console.log("Sensor's All items inserted!!!!");
 	}//SENSOR END
 	else if(Command == 0x14){//BluetoothData
-		//console.log('Bluetooth');
 		var BT_Count = message.readUIntLE(15, 2);
 		for(i = 0; i < BT_Count; i++){
-			//BLEData
 			if(message.readIntLE(17 + All_Length, 1) == 0xd){
 			}else break;
 			var BLE_Length = message.readUIntLE(18 + All_Length, 1);
@@ -94,7 +92,7 @@ var All_Length = 0; //이전 Packet길이 값을 사용하기 위해
 	        var BLE_dt = new Date(BLE_t*1000);
    			var BLE_Time = BLE_dt.toFormat('YYYY-MM-DD HH24:MI:SS');
 
-			All_Length += (BLE_DataLength+15);// =1+1+1+6+1+BLE_DataLength+1+4
+			All_Length += (BLE_DataLength+15);
 
 			var BLE = {
 				'CLASSROOM_MAC' : P_Mac,
@@ -106,16 +104,11 @@ var All_Length = 0; //이전 Packet길이 값을 사용하기 위해
 			};
 			con.query('INSERT INTO RAW_BLE SET ?', BLE, function(err, result) {
 				if (err) throw err;
-				//console.log("BLE inserted");
 			});
 		}
-		//console.log("Bluetooth's All items inserted!!!!");
 	}
 	else{
-		//console.log('Close Packet');
 	}
 });
 
 server.bind(PORT, HOST);
-//출처: http://opens.kr/61 [opens.kr]
-//참조 node.js dgram Manual : http://nodejs.sideeffect.kr/docs/v0.8.20/api/dgram.html
