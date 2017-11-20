@@ -1,20 +1,21 @@
 var PORT 		= 22301,
 	HOST 		= '0.0.0.0';
-var dgram 		= require('dgram'), //UDP: Universal Datagram Protocol
+var dgram 		= require('dgram'),
 	mysql 		= require('mysql'),
     //con        	= require("./db"),
-	dateutil 	= require('date-utils'); //UNIX TIME PARSER
-
+	dateutil 	= require('date-utils');
 
 var server = dgram.createSocket('udp4');
 
+var nowTime = new Date();
+nowTime =  nowTime .toFormat('YYYY-MM-DD HH24:MI:SS');
 server.on('listening', function () {
 	var address = server.address();
-	console.log('UDP Server listening on ' + address.address + ":" + address.port);
+	console.log(nowTime +'//UDP Server listening on ' + address.address + ":" + address.port);
 });
 
 process.on('uncaughtException', function (err) {
-    console.log('Caught exception: ' + err);
+    console.log(nowTime + '//Caught exception: ' + err);
  
 });
 
@@ -33,10 +34,9 @@ var P_Time = dt.toFormat('YYYY-MM-DD HH24:MI:SS');
 var P_Size = message.readUInt32LE(11);
 
 var All_Length = 0; 
-	if(Command == 0x11){//SensorData
+	if(Command == 0x11){//SENSOR
 		var SN_Count = message.readUInt16LE(15);//, 2);
 		for(var i = 0; i < SN_Count; i++){
-			//SensorData
 			var SN_Type = message.readUInt16LE(17 + All_Length);//, 2);
 			if(SN_Type == 5 || SN_Type == 6) break;
 			var SN_Data = message.readInt32LE(19 + All_Length);//, 4);
@@ -59,7 +59,6 @@ var All_Length = 0;
 				"WHERE `sensor`.`TYPE` = "+SN_Type+" and (MIN < "+SN_Data+" and MAX > "+SN_Data+")) "+
 			"ON DUPLICATE KEY UPDATE `DATA` ="+SN_Data+",`TIME` ='"+P_Time+"'; "+
 			
-			// out of range
 			"INSERT INTO `smartschool`.`sensor_error` (`MAC`,`TYPE`,`DATA`,`TIME`) "+
 			"SELECT "+P_Mac+","+SN_Type+","+SN_Data+",'"+P_Time+"' FROM DUAL "+
 			"WHERE EXISTS( "+
@@ -73,7 +72,7 @@ var All_Length = 0;
 			});
 		}
 	}//SENSOR END
-	else if(Command == 0x14){//BluetoothData
+	else if(Command == 0x14){//BLE
 		var BT_Count = message.readUIntLE(15, 2);
 		for(i = 0; i < BT_Count; i++){
 			if(message.readIntLE(17 + All_Length, 1) == 0xd){
@@ -106,7 +105,7 @@ var All_Length = 0;
 				if (err) throw err;
 			});
 		}
-	}
+	}//BLE END
 	else{
 	}
 });
